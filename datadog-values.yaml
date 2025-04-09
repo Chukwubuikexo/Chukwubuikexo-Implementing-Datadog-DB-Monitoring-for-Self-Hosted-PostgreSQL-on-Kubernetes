@@ -1,0 +1,140 @@
+datadog:
+  apiKey: "..........."
+  site: "datadoghq.eu"
+  clusterName: "test-cluster"
+
+  kubelet:
+    host:
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+    tlsVerify: false 
+
+  logs:
+    enabled: true
+    containerCollectAll: true
+
+  apm:
+    portEnabled: true
+
+  processAgent:
+    enabled: true
+
+  networkMonitoring:
+    enabled: true 
+
+  systemProbe:
+    enableTCPQueueLength: true  
+    enableOOMKill: true       
+
+  securityAgent:
+    runtime:
+      enabled: true 
+
+  databaseMonitoring:
+    enabled: true 
+
+  confd:
+    postgres.yaml: |-
+      init_config:
+
+      instances:
+        - host: postgres-service.postgres.svc.cluster.local 
+          port: 5432
+          username: datadog
+          password: "postgres"
+          dbname: postgres  
+          tags:
+            - env:dev
+            - service:postgres
+          dbm: true  #Enable database monitoring
+          collect_activity_metrics: true
+          collect_database_size_metrics: true
+          collect_default_database: false
+          collect_wal_metrics: true
+          data_directory: /var/lib/postgresql/data
+          collection_interval: 15
+    kubelet.yaml: |-
+      init_config:
+        kubelet_auth_token_path: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+      instances:
+        - kubelet_host: ${HOST_IP} 
+          kubelet_port: 10250 
+          kubelet_tls_verify: false  
+          bearer_token_path: /var/run/secrets/kubernetes.io/serviceaccount/token
+          namespaces:
+            - "*"
+          tags:
+            - env:dev
+          collect_kubernetes_events: true
+          namespace_regex: .*
+          enabled_metrics:
+            - "*"
+    etcd.yaml: "{}"  
+    kube_controller_manager.yaml: "{}"  
+    kube_scheduler.yaml: "{}" 
+agents:
+  serviceAccount:
+    create: true
+    name: datadog-agent
+    automountServiceAccountToken: true 
+
+  rbac:
+    create: true
+    rules:
+      - apiGroups: ["authentication.k8s.io"]
+        resources: ["tokenreviews"]
+        verbs: ["create"]
+      - apiGroups: ["authorization.k8s.io"]
+        resources: ["subjectaccessreviews"]
+        verbs: ["create"]
+      - apiGroups: [""]
+        resources: ["nodes/metrics", "nodes/proxy", "nodes/stats"]
+        verbs: ["get"]
+
+  containers:
+    agent:
+      env:
+        - name: DD_DBM_HOSTNAME_INJECTION_ENABLED
+          value: "true"
+        - name: DD_DBM_HOSTNAME_INJECTION_PORT
+          value: "5432"
+        - name: DD_DBM_PROPAGATION_MODE
+          value: "service"
+        - name: DD_DBM_ACTIVITY_TOP_COLLECTION_LIMIT
+          value: "200"
+        - name: DD_DBM_STATEMENT_SAMPLES_COLLECTION_LIMIT
+          value: "200"
+        - name: DD_DBM_EXPLAIN_PLAN_ENABLED
+          value: "true"
+        - name: DD_DBM_EXPLAIN_PLAN_SAMPLES_COLLECTION_LIMIT
+          value: "20"
+        - name: DD_DBM_ACTIVITY_COLLECTION_ENABLED 
+          value: "true"
+        - name: DD_DBM_SAMPLES_COLLECTION_ENABLED   
+          value: "true"
+        - name: DD_DBM_METRICS_COLLECTION_ENABLED 
+          value: "true"
+
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+  volumes:
+    - name: kubelet-certs
+      hostPath:
+        path: /var/lib/kubelet/pki
+
+  volumeMounts:
+    - name: kubelet-certs
+      mountPath: /host/var/lib/kubelet/pki
+      readOnly: true
+
+clusterAgent:
+  enabled: true
+  rbac:
+    create: true
